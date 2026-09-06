@@ -1,0 +1,450 @@
+// This is your Prisma schema file.
+// Learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────
+// USERS & AUTH
+// ─────────────────────────────────────────
+
+model User {
+  id              String   @id @default(cuid())
+  firebaseUid     String   @unique @map("firebase_uid")
+  email           String   @unique
+  displayName     String?  @map("display_name")
+  photoUrl        String?  @map("photo_url")
+  isAdmin         Boolean  @default(false) @map("is_admin")
+  notifyEnabled   Boolean  @default(true) @map("notify_enabled")
+  scoreThreshold  Int      @default(65) @map("score_threshold")
+  rvolThreshold   Float    @default(1.8) @map("rvol_threshold")
+  watchlistOnly   Boolean  @default(false) @map("watchlist_only")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  devices           Device[]
+  brokerConnections BrokerConnection[]
+  watchlistItems    WatchlistItem[]
+  paperAccount      PaperAccount?
+  orders            Order[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model Device {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  fcmToken  String   @map("fcm_token")
+  platform  String   // "android" | "ios"
+  appVersion String? @map("app_version")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fcmToken])
+  @@map("devices")
+}
+
+// ─────────────────────────────────────────
+// INSTRUMENTS
+// ─────────────────────────────────────────
+
+model Instrument {
+  instrumentKey   String    @id @map("instrument_key") // e.g. NSE_EQ|INE002A01018
+  isin            String?
+  exchange        String    // NSE | BSE
+  segment         String    // NSE_EQ | BSE_EQ
+  instrumentType  String    @default("EQ") @map("instrument_type")
+  tradingSymbol   String    @map("trading_symbol")
+  companyName     String?   @map("company_name")
+  shortName       String?   @map("short_name")
+  securityType    String?   @map("security_type")
+  tickSize        Float?    @map("tick_size")
+  lotSize         Int?      @default(1) @map("lot_size")
+  active          Boolean   @default(true)
+  suspended       Boolean   @default(false)
+  scannerEnabled  Boolean   @default(false) @map("scanner_enabled")
+  lastSeenOn      DateTime  @default(now()) @map("last_seen_on") @db.Date
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  technicalLevels TechnicalLevel[]
+  scannerSignals  ScannerSignal[]
+  watchlistItems  WatchlistItem[]
+  orders          Order[]
+
+  @@index([tradingSymbol], map: "idx_instruments_symbol")
+  @@index([companyName], map: "idx_instruments_company")
+  @@index([isin], map: "idx_instruments_isin")
+  @@index([scannerEnabled, active, suspended], map: "idx_instruments_scanner")
+  @@map("instruments")
+}
+
+// ─────────────────────────────────────────
+// CANDLES  (TimescaleDB hypertable — see migration)
+// ─────────────────────────────────────────
+// NOTE: This is defined via raw SQL migration, not Prisma model,
+// because TimescaleDB hypertables require special DDL.
+// The table name is "candles".
+
+// ─────────────────────────────────────────
+// TECHNICAL LEVELS  (pre-market calc)
+// ─────────────────────────────────────────
+
+model TechnicalLevel {
+  id              String   @id @default(cuid())
+  instrumentKey   String   @map("instrument_key")
+  tradingDate     DateTime @map("trading_date") @db.Date
+  resistance20d   Float    @map("resistance_20d")
+  support20d      Float    @map("support_20d")
+  atr14           Float    @map("atr_14")
+  // JSON: { "09:15": medianVol, "09:20": medianVol, ... } for RVOL calculation
+  avgVolByBucket  Json     @map("avg_vol_by_bucket")
+  vwapNumerator   Float    @default(0) @map("vwap_numerator")   // updated live
+  vwapDenominator Float    @default(0) @map("vwap_denominator") // updated live
+  vwap            Float    @default(0)                          // updated live
+  prevDayClose    Float?   @map("prev_day_close")
+  prevDayVolume   BigInt?  @map("prev_day_volume")
+  calculatedAt    DateTime @default(now()) @map("calculated_at")
+
+  instrument Instrument    @relation(fields: [instrumentKey], references: [instrumentKey])
+  signals    ScannerSignal[]
+
+  @@unique([instrumentKey, tradingDate])
+  @@index([tradingDate])
+  @@map("technical_levels")
+}
+
+// ─────────────────────────────────────────
+// SCANNER SIGNALS
+// ─────────────────────────────────────────
+
+enum SignalType {
+  BREAKOUT
+  BREAKDOWN
+}
+
+enum SignalState {
+  WATCHING
+  CANDIDATE
+  CONFIRMED
+  RETESTING
+  FAILED
+  EXPIRED
+}
+
+model ScannerSignal {
+  id              String      @id @default(cuid())
+  instrumentKey   String      @map("instrument_key")
+  tradingDate     DateTime    @map("trading_date") @db.Date
+  type            SignalType
+  state           SignalState  @default(CANDIDATE)
+  price           Float
+  level           Float       // resistance or support level broken
+  rvol            Float
+  vwap            Float
+  atr             Float
+  bodyPercent     Float       @map("body_percent")
+  breakDistance   Float       @map("break_distance")  // in ATR units
+  volume          BigInt
+  candleOpen      Float       @map("candle_open")
+  candleHigh      Float       @map("candle_high")
+  candleLow       Float       @map("candle_low")
+  candleClose     Float       @map("candle_close")
+  detectedAt      DateTime    @map("detected_at")
+  confirmedAt     DateTime?   @map("confirmed_at")
+  failedAt        DateTime?   @map("failed_at")
+  levelId         String?     @map("level_id")
+  technicalLevelId String?    @map("technical_level_id")
+
+  signalScore     Int?        @map("signal_score")
+  followThroughProb Float?    @map("follow_through_prob")
+  modelVersion    String?     @map("model_version")
+  sampleSize      Int?        @map("sample_size")
+  explanation     String?     // AI generated text
+
+  instrument     Instrument      @relation(fields: [instrumentKey], references: [instrumentKey])
+  technicalLevel TechnicalLevel? @relation(fields: [technicalLevelId], references: [id])
+  features       SignalFeature?
+  outcome        SignalOutcome?
+  notifications  Notification[]
+
+  @@unique([instrumentKey, type, tradingDate, level]) // one signal per level per day
+  @@index([tradingDate, state])
+  @@index([detectedAt])
+  @@map("scanner_signals")
+}
+
+model SignalFeature {
+  id                    String @id @default(cuid())
+  signalId              String @unique @map("signal_id")
+  // All ML features stored as structured columns
+  rvol                  Float
+  breakDistanceAtr      Float  @map("break_distance_atr")
+  bodyPercent           Float  @map("body_percent")
+  vwapDistance          Float  @map("vwap_distance")
+  ema20Slope            Float  @map("ema20_slope")
+  ema50Slope            Float  @map("ema50_slope")
+  levelTouches          Int    @map("level_touches")
+  levelAgeDays          Int    @map("level_age_days")
+  gapPercent            Float  @map("gap_percent")
+  bidAskSpread          Float  @map("bid_ask_spread")
+  avgDailyTurnover      Float  @map("avg_daily_turnover")
+  sectorStrength        Float  @map("sector_strength")
+  stockVsNifty          Float  @map("stock_vs_nifty")
+  marketTrend           Float  @map("market_trend")  // -1 to 1
+  timeOfDayMinutes      Int    @map("time_of_day_minutes") // minutes since 09:15
+  prevDayRange          Float  @map("prev_day_range")
+  currentVolatility     Float  @map("current_volatility")
+
+  signal ScannerSignal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@map("signal_features")
+}
+
+model SignalOutcome {
+  id             String  @id @default(cuid())
+  signalId       String  @unique @map("signal_id")
+  ret5m          Float?  @map("ret_5m")
+  ret15m         Float?  @map("ret_15m")
+  ret30m         Float?  @map("ret_30m")
+  ret1h          Float?  @map("ret_1h")
+  ret1d          Float?  @map("ret_1d")
+  ret3d          Float?  @map("ret_3d")
+  maxFavorable   Float?  @map("max_favorable")  // MFE
+  maxAdverse     Float?  @map("max_adverse")    // MAE
+  heldLevel      Boolean? @map("held_level")    // stayed above/below broken level after 30m
+  calculatedAt   DateTime @default(now()) @map("calculated_at")
+
+  signal ScannerSignal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@map("signal_outcomes")
+}
+
+model ModelVersion {
+  id              String   @id @default(cuid())
+  name            String   @unique // e.g. "breakout-v1.3"
+  filePath        String   @map("file_path")
+  trainedAt       DateTime @map("trained_at")
+  trainSamples    Int      @map("train_samples")
+  testSamples     Int      @map("test_samples")
+  precision       Float
+  recall          Float
+  f1              Float
+  rocAuc          Float    @map("roc_auc")
+  isActive        Boolean  @default(false) @map("is_active")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("model_versions")
+}
+
+// ─────────────────────────────────────────
+// WATCHLISTS
+// ─────────────────────────────────────────
+
+model WatchlistItem {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  instrumentKey String   @map("instrument_key")
+  addedAt       DateTime @default(now()) @map("added_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instrument Instrument @relation(fields: [instrumentKey], references: [instrumentKey])
+
+  @@unique([userId, instrumentKey])
+  @@map("watchlist_items")
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────
+
+model Notification {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  signalId      String?  @map("signal_id")
+  fcmMessageId  String?  @map("fcm_message_id")
+  title         String
+  body          String
+  data          Json?
+  deliveredAt   DateTime? @map("delivered_at")
+  openedAt      DateTime? @map("opened_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signal ScannerSignal? @relation(fields: [signalId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────
+// PAPER TRADING
+// ─────────────────────────────────────────
+
+model PaperAccount {
+  id             String   @id @default(cuid())
+  userId         String   @unique @map("user_id")
+  balance        Float    @default(1000000) // ₹10 lakh
+  initialBalance Float    @default(1000000) @map("initial_balance")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders   Order[]    @relation("PaperOrders")
+  ledger   CashLedger[]
+
+  @@map("paper_accounts")
+}
+
+model CashLedger {
+  id          String   @id @default(cuid())
+  accountId   String   @map("account_id")
+  type        String   // CREDIT | DEBIT
+  amount      Float
+  description String
+  balance     Float    // running balance after this entry
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  account PaperAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@map("cash_ledger")
+}
+
+// ─────────────────────────────────────────
+// ORDERS (paper + real)
+// ─────────────────────────────────────────
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  SL
+  SL_M
+}
+
+enum OrderStatus {
+  PENDING
+  OPEN
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+  REJECTED
+}
+
+enum ProductType {
+  INTRADAY
+  DELIVERY
+}
+
+enum AccountType {
+  PAPER
+  REAL
+}
+
+model Order {
+  id               String      @id @default(cuid())
+  idempotencyKey   String      @unique @map("idempotency_key")
+  userId           String      @map("user_id")
+  accountType      AccountType @map("account_type")
+  paperAccountId   String?     @map("paper_account_id")
+  brokerOrderId    String?     @map("broker_order_id") // Upstox order ID
+  instrumentKey    String      @map("instrument_key")
+  side             OrderSide
+  type             OrderType
+  product          ProductType
+  qty              Int
+  filledQty        Int         @default(0) @map("filled_qty")
+  price            Float?      // null for market orders
+  triggerPrice     Float?      @map("trigger_price")
+  avgFillPrice     Float?      @map("avg_fill_price")
+  status           OrderStatus @default(PENDING)
+  brokerage        Float       @default(0)
+  taxes            Float       @default(0)
+  slippage         Float       @default(0)
+  rejectionReason  String?     @map("rejection_reason")
+  placedAt         DateTime    @default(now()) @map("placed_at")
+  filledAt         DateTime?   @map("filled_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id])
+  instrument   Instrument    @relation(fields: [instrumentKey], references: [instrumentKey])
+  paperAccount PaperAccount? @relation("PaperOrders", fields: [paperAccountId], references: [id])
+  trades       Trade[]
+
+  @@index([userId, placedAt])
+  @@index([status])
+  @@map("orders")
+}
+
+model Trade {
+  id          String   @id @default(cuid())
+  orderId     String   @map("order_id")
+  qty         Int
+  price       Float
+  tradedAt    DateTime @map("traded_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@map("trades")
+}
+
+// ─────────────────────────────────────────
+// BROKER CONNECTIONS
+// ─────────────────────────────────────────
+
+model BrokerConnection {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  broker            String   // "upstox"
+  accessToken       String   @map("access_token")  // AES-256 encrypted
+  refreshToken      String?  @map("refresh_token") // AES-256 encrypted
+  tokenExpiresAt    DateTime @map("token_expires_at")
+  brokerUserId      String?  @map("broker_user_id")
+  brokerUserName    String?  @map("broker_user_name")
+  isActive          Boolean  @default(true) @map("is_active")
+  connectedAt       DateTime @default(now()) @map("connected_at")
+  lastUsedAt        DateTime? @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, broker])
+  @@map("broker_connections")
+}
+
+// ─────────────────────────────────────────
+// AUDIT
+// ─────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  action    String   // e.g. ORDER_PLACED, BROKER_CONNECTED
+  entity    String?  // e.g. Order, BrokerConnection
+  entityId  String?  @map("entity_id")
+  payload   Json?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}

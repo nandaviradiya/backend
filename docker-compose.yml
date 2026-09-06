@@ -1,0 +1,60 @@
+services:
+  # ─────────────────────────────────────────
+  # TimescaleDB  (PostgreSQL 16 + Timescale)
+  # ─────────────────────────────────────────
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: aitrading_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aitrading
+      POSTGRES_PASSWORD: aitrading_secret
+      POSTGRES_DB: aitrading
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aitrading']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # Redis 7  (cache + pub/sub + streams)
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: aitrading_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # pgAdmin  (optional DB browser)
+  # ─────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: aitrading_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@aitrading.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - '5050:80'
+    depends_on:
+      - db
+    profiles:
+      - tools
+
+volumes:
+  pgdata:
+  redisdata:
