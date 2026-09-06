@@ -215,6 +215,23 @@ export class SrScannerService {
       const distToRes = ((resistance20d - currentPrice) / resistance20d) * 100; // positive = below resistance
       const distToSup = ((currentPrice - support20d) / support20d) * 100; // positive = above support
 
+      // Technical Factors: RSI 14
+      const rsi14 = this.calcRsi14(closes);
+
+      // Price action: Candle wick and body quality
+      const lastCandle = candles[candles.length - 1];
+      const candleRange = Math.max(0.01, lastCandle.high - lastCandle.low);
+      const upperWick = (lastCandle.high - Math.max(lastCandle.open || lastCandle.close, lastCandle.close)) / candleRange;
+      const lowerWick = (Math.min(lastCandle.open || lastCandle.close, lastCandle.close) - lastCandle.low) / candleRange;
+
+      // Volatility Contraction Pattern (VCP / Squeeze): tight range before breakout
+      const last5Range = Math.max(...candles.slice(-5).map(c => c.high)) - Math.min(...candles.slice(-5).map(c => c.low));
+      const isSqueeze = atr14 > 0 && last5Range < (atr14 * 2.8);
+
+      // Level touches (how many times did price test near this level in last 20 days)
+      const touchesRes = last20.filter(c => Math.abs(c.high - resistance20d) / resistance20d < 0.012).length;
+      const touchesSup = last20.filter(c => Math.abs(c.low - support20d) / support20d < 0.012).length;
+
       let type: 'BREAKOUT' | 'BREAKDOWN' | 'POTENTIAL_BREAKOUT' | 'POTENTIAL_BREAKDOWN';
       let level: number;
       let levelType: 'RESISTANCE' | 'SUPPORT';
@@ -229,36 +246,76 @@ export class SrScannerService {
         level = resistance20d;
         levelType = 'RESISTANCE';
         distancePercent = Number((((currentPrice - resistance20d) / resistance20d) * 100).toFixed(2));
-        score = Math.min(98, Math.round(85 + (rvol > 1.5 ? 8 : 4) + (trend === 'UP' ? 5 : 0)));
-        description = `Broke 20-day resistance ₹${resistance20d.toFixed(2)} (+${distancePercent}%). RVOL ${rvol}x. Bullish follow-through probability ${score}%.`;
+        
+        let breakoutScore = 84;
+        if (rvol >= 2.0) breakoutScore += 7;
+        else if (rvol >= 1.5) breakoutScore += 4;
+        if (trend === 'UP') breakoutScore += 5;
+        if (rsi14 >= 55 && rsi14 <= 74) breakoutScore += 5; // Sweetspot momentum
+        else if (rsi14 > 80) breakoutScore -= 8; // Overextended / exhaustion trap
+        if (upperWick < 0.25) breakoutScore += 4; // Closed near highs
+        else if (upperWick > 0.45) breakoutScore -= 7; // Seller rejection wick
+        if (isSqueeze) breakoutScore += 4;
+        score = Math.min(99, Math.max(60, Math.round(breakoutScore)));
+
+        description = `Confirmed Breakout above 20D resistance ₹${resistance20d.toFixed(2)} (+${distancePercent}%). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
       } else if (currentPrice <= support20d * 1.001) {
         // Confirmed Breakdown
         type = 'BREAKDOWN';
         level = support20d;
         levelType = 'SUPPORT';
         distancePercent = Number((-((support20d - currentPrice) / support20d) * 100).toFixed(2));
-        score = Math.min(98, Math.round(85 + (rvol > 1.5 ? 8 : 4) + (trend === 'DOWN' ? 5 : 0)));
-        description = `Broke 20-day support ₹${support20d.toFixed(2)} (${distancePercent}%). RVOL ${rvol}x. Bearish breakdown probability ${score}%.`;
+        
+        let breakdownScore = 84;
+        if (rvol >= 2.0) breakdownScore += 7;
+        else if (rvol >= 1.5) breakdownScore += 4;
+        if (trend === 'DOWN') breakdownScore += 5;
+        if (rsi14 <= 45 && rsi14 >= 25) breakdownScore += 5;
+        else if (rsi14 < 20) breakdownScore -= 8; // Oversold bounce risk
+        if (lowerWick < 0.25) breakdownScore += 4;
+        else if (lowerWick > 0.45) breakdownScore -= 7;
+        if (isSqueeze) breakdownScore += 4;
+        score = Math.min(99, Math.max(60, Math.round(breakdownScore)));
+
+        description = `Confirmed Breakdown below 20D support ₹${support20d.toFixed(2)} (${distancePercent}%). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
       } else if (distToRes <= distToSup) {
         // Near Resistance (Potential Breakout)
-        // Accept within 7.5%
         if (distToRes > 7.5) return null;
         type = 'POTENTIAL_BREAKOUT';
         level = resistance20d;
         levelType = 'RESISTANCE';
-        distancePercent = -Number(distToRes.toFixed(2)); // negative means below resistance
-        score = this.calcProbabilityScore(distToRes, trend, 'UP', rvol, atr14, resistance20d);
-        description = `Trading ${distToRes.toFixed(1)}% below 20D resistance ₹${resistance20d.toFixed(2)}. Trend: ${trend}, RVOL ${rvol}x. Breakout probability ${score}%.`;
+        distancePercent = -Number(distToRes.toFixed(2));
+        score = this.calcProbabilityScore({
+          distPct: distToRes,
+          trend,
+          targetTrend: 'UP',
+          rvol,
+          rsi: rsi14,
+          upperWick,
+          lowerWick,
+          isSqueeze,
+          touches: touchesRes,
+        });
+        description = `Testing 20D resistance ₹${resistance20d.toFixed(2)} (${distToRes.toFixed(1)}% away). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
       } else {
         // Near Support (Potential Breakdown)
-        // Accept within 7.5%
         if (distToSup > 7.5) return null;
         type = 'POTENTIAL_BREAKDOWN';
         level = support20d;
         levelType = 'SUPPORT';
-        distancePercent = Number(distToSup.toFixed(2)); // positive means above support
-        score = this.calcProbabilityScore(distToSup, trend, 'DOWN', rvol, atr14, support20d);
-        description = `Trading ${distToSup.toFixed(1)}% above 20D support ₹${support20d.toFixed(2)}. Trend: ${trend}, RVOL ${rvol}x. Breakdown probability ${score}%.`;
+        distancePercent = Number(distToSup.toFixed(2));
+        score = this.calcProbabilityScore({
+          distPct: distToSup,
+          trend,
+          targetTrend: 'DOWN',
+          rvol,
+          rsi: rsi14,
+          upperWick,
+          lowerWick,
+          isSqueeze,
+          touches: touchesSup,
+        });
+        description = `Testing 20D support ₹${support20d.toFixed(2)} (${distToSup.toFixed(1)}% away). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
       }
 
       return {
@@ -282,33 +339,78 @@ export class SrScannerService {
     }
   }
 
-  private calcProbabilityScore(
-    distPct: number,
-    trend: string,
-    targetTrend: string,
-    rvol: number,
-    atr: number,
-    levelPrice: number
-  ): number {
-    let score = 50; // base probability
+  private calcProbabilityScore(params: {
+    distPct: number;
+    trend: string;
+    targetTrend: string;
+    rvol: number;
+    rsi: number;
+    upperWick: number;
+    lowerWick: number;
+    isSqueeze: boolean;
+    touches: number;
+  }): number {
+    let score = 52; // base probability
 
-    // Proximity factor (up to +25)
-    // Closer to level = higher probability
-    if (distPct < 1.0) score += 25;
-    else if (distPct < 2.5) score += 18;
-    else if (distPct < 4.0) score += 12;
-    else if (distPct < 6.0) score += 6;
+    // 1. Proximity factor (closer = higher probability of testing/breaking)
+    if (params.distPct < 1.0) score += 22;
+    else if (params.distPct < 2.5) score += 16;
+    else if (params.distPct < 4.0) score += 10;
+    else if (params.distPct < 6.0) score += 5;
 
-    // Trend alignment (up to +15)
-    if (trend === targetTrend) score += 15;
-    else if (trend === 'SIDEWAYS') score += 7;
+    // 2. Trend alignment
+    if (params.trend === params.targetTrend) score += 14;
+    else if (params.trend === 'SIDEWAYS') score += 6;
 
-    // Volume surge (up to +12)
-    if (rvol >= 2.0) score += 12;
-    else if (rvol >= 1.4) score += 8;
-    else if (rvol >= 1.0) score += 4;
+    // 3. Volume surge
+    if (params.rvol >= 2.5) score += 14;
+    else if (params.rvol >= 1.5) score += 9;
+    else if (params.rvol >= 1.1) score += 4;
 
-    return Math.min(96, Math.max(55, Math.round(score)));
+    // 4. RSI momentum factor
+    if (params.targetTrend === 'UP') {
+      if (params.rsi >= 55 && params.rsi <= 72) score += 7; // Ideal momentum sweetspot
+      else if (params.rsi > 78) score -= 8; // Overbought exhaustion risk
+      else if (params.rsi < 45) score -= 6; // Weak momentum
+    } else {
+      if (params.rsi <= 45 && params.rsi >= 28) score += 7;
+      else if (params.rsi < 22) score -= 8; // Oversold bounce risk
+      else if (params.rsi > 55) score -= 6;
+    }
+
+    // 5. Candle rejection wicks (traps vs conviction)
+    if (params.targetTrend === 'UP') {
+      if (params.upperWick < 0.25) score += 5; // Minimal selling wick
+      else if (params.upperWick > 0.45) score -= 8; // Long upper wick rejection
+    } else {
+      if (params.lowerWick < 0.25) score += 5;
+      else if (params.lowerWick > 0.45) score -= 8;
+    }
+
+    // 6. Volatility Contraction / Squeeze (energy coiling)
+    if (params.isSqueeze) score += 6;
+
+    // 7. Tested level touches (VCP confirmation)
+    if (params.touches >= 3) score += 5;
+    else if (params.touches === 2) score += 3;
+
+    return Math.min(98, Math.max(55, Math.round(score)));
+  }
+
+  private calcRsi14(closes: number[]): number {
+    if (closes.length < 15) return 50;
+    let gains = 0;
+    let losses = 0;
+    for (let i = closes.length - 14; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff >= 0) gains += diff;
+      else losses -= diff;
+    }
+    const avgGain = gains / 14;
+    const avgLoss = losses / 14;
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
   }
 
   private calcAtr14(highs: number[], lows: number[], closes: number[]): number {
@@ -336,7 +438,7 @@ export class SrScannerService {
     return ema;
   }
 
-  private async fetchYahooCandles(symbol: string): Promise<{ high: number; low: number; close: number; volume: number }[] | null> {
+  private async fetchYahooCandles(symbol: string): Promise<{ high: number; low: number; close: number; volume: number; open?: number }[] | null> {
     try {
       const yahooSymbol = symbol.endsWith('.NS') ? symbol : `${symbol}.NS`;
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=2mo`;
@@ -353,6 +455,7 @@ export class SrScannerService {
       if (!q || !timestamps.length) return null;
 
       return timestamps.map((_, i) => ({
+        open: q.open[i] ?? q.close[i] ?? 0,
         high: q.high[i] ?? 0,
         low: q.low[i] ?? 0,
         close: q.close[i] ?? 0,
@@ -362,6 +465,7 @@ export class SrScannerService {
       return null;
     }
   }
+
 
   private getFallbackSeedRadar(): BreakoutRadarItem[] {
     return [
