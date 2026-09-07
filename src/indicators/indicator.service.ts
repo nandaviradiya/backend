@@ -86,15 +86,16 @@ export class IndicatorService implements OnModuleInit {
       LIMIT 21
     `;
 
-    if (candles.length < 10) return; // not enough data
+    if (candles.length < 3) return; // not enough data
 
     const recent20 = candles.slice(0, 20);
+    const recent3 = candles.slice(0, 3);
 
-    // 20-day resistance = highest high of previous 20 sessions
-    const resistance20d = Math.max(...recent20.map((c) => parseFloat(c.high)));
+    // 2-3 day resistance = highest high of previous 3 sessions
+    const resistance20d = Math.max(...recent3.map((c) => parseFloat(c.high)));
 
-    // 20-day support = lowest low of previous 20 sessions
-    const support20d = Math.min(...recent20.map((c) => parseFloat(c.low)));
+    // 2-3 day support = lowest low of previous 3 sessions
+    const support20d = Math.min(...recent3.map((c) => parseFloat(c.low)));
 
     // ATR-14 = average of true ranges
     const trueRanges: number[] = [];

@@ -191,15 +191,18 @@ export class SrScannerService {
       const lows = candles.map(c => c.low);
       const volumes = candles.map(c => c.volume);
 
-      const last20 = candles.slice(-20);
-      const resistance20d = Math.max(...last20.map(c => c.high));
-      const support20d = Math.min(...last20.map(c => c.low));
+      // 2-3 days swing range (previous 3 sessions lookback excluding current session)
+      const priorCandles = candles.length >= 4 ? candles.slice(-4, -1) : candles.slice(0, -1);
+      const windowCandles = priorCandles.length >= 2 ? priorCandles : candles.slice(-3);
+
+      const resistance3d = Math.max(...windowCandles.map(c => c.high));
+      const support3d = Math.min(...windowCandles.map(c => c.low));
       const currentPrice = closes[closes.length - 1];
       const prevClose = closes.length >= 2 ? closes[closes.length - 2] : currentPrice;
 
-      const volume20dAvg = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+      const volumeAvg = volumes.slice(-15).reduce((a, b) => a + b, 0) / Math.min(15, volumes.length);
       const lastVol = volumes[volumes.length - 1];
-      const rvol = volume20dAvg > 0 ? Number((lastVol / volume20dAvg).toFixed(2)) : 1.2;
+      const rvol = volumeAvg > 0 ? Number((lastVol / volumeAvg).toFixed(2)) : 1.2;
       const atr14 = this.calcAtr14(highs, lows, closes);
 
       // Trend: 20 EMA vs 50 EMA
@@ -212,8 +215,8 @@ export class SrScannerService {
         lastEma20 < lastEma50 * 0.992 ? 'DOWN' : 'SIDEWAYS';
 
       // Distance calculations
-      const distToRes = ((resistance20d - currentPrice) / resistance20d) * 100; // positive = below resistance
-      const distToSup = ((currentPrice - support20d) / support20d) * 100; // positive = above support
+      const distToRes = ((resistance3d - currentPrice) / resistance3d) * 100; // positive = below resistance
+      const distToSup = ((currentPrice - support3d) / support3d) * 100; // positive = above support
 
       // Technical Factors: RSI 14
       const rsi14 = this.calcRsi14(closes);
@@ -228,9 +231,9 @@ export class SrScannerService {
       const last5Range = Math.max(...candles.slice(-5).map(c => c.high)) - Math.min(...candles.slice(-5).map(c => c.low));
       const isSqueeze = atr14 > 0 && last5Range < (atr14 * 2.8);
 
-      // Level touches (how many times did price test near this level in last 20 days)
-      const touchesRes = last20.filter(c => Math.abs(c.high - resistance20d) / resistance20d < 0.012).length;
-      const touchesSup = last20.filter(c => Math.abs(c.low - support20d) / support20d < 0.012).length;
+      // Level touches (how many times did price test near this level in last 2-3 days)
+      const touchesRes = windowCandles.filter(c => Math.abs(c.high - resistance3d) / resistance3d < 0.015).length;
+      const touchesSup = windowCandles.filter(c => Math.abs(c.low - support3d) / support3d < 0.015).length;
 
       let type: 'BREAKOUT' | 'BREAKDOWN' | 'POTENTIAL_BREAKOUT' | 'POTENTIAL_BREAKDOWN';
       let level: number;
@@ -239,13 +242,13 @@ export class SrScannerService {
       let score: number;
       let description: string;
 
-      // Check breakout conditions:
-      if (currentPrice >= resistance20d * 0.999) {
+      // Check breakout conditions (2-3 days swing high/low):
+      if (currentPrice >= resistance3d * 0.999) {
         // Confirmed Breakout
         type = 'BREAKOUT';
-        level = resistance20d;
+        level = resistance3d;
         levelType = 'RESISTANCE';
-        distancePercent = Number((((currentPrice - resistance20d) / resistance20d) * 100).toFixed(2));
+        distancePercent = Number((((currentPrice - resistance3d) / resistance3d) * 100).toFixed(2));
         
         let breakoutScore = 84;
         if (rvol >= 2.0) breakoutScore += 7;
@@ -258,13 +261,13 @@ export class SrScannerService {
         if (isSqueeze) breakoutScore += 4;
         score = Math.min(99, Math.max(60, Math.round(breakoutScore)));
 
-        description = `Confirmed Breakout above 20D resistance ₹${resistance20d.toFixed(2)} (+${distancePercent}%). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
-      } else if (currentPrice <= support20d * 1.001) {
+        description = `Confirmed Breakout above 3D resistance ₹${resistance3d.toFixed(2)} (+${distancePercent}%). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
+      } else if (currentPrice <= support3d * 1.001) {
         // Confirmed Breakdown
         type = 'BREAKDOWN';
-        level = support20d;
+        level = support3d;
         levelType = 'SUPPORT';
-        distancePercent = Number((-((support20d - currentPrice) / support20d) * 100).toFixed(2));
+        distancePercent = Number((-((support3d - currentPrice) / support3d) * 100).toFixed(2));
         
         let breakdownScore = 84;
         if (rvol >= 2.0) breakdownScore += 7;
@@ -277,12 +280,12 @@ export class SrScannerService {
         if (isSqueeze) breakdownScore += 4;
         score = Math.min(99, Math.max(60, Math.round(breakdownScore)));
 
-        description = `Confirmed Breakdown below 20D support ₹${support20d.toFixed(2)} (${distancePercent}%). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
+        description = `Confirmed Breakdown below 3D support ₹${support3d.toFixed(2)} (${distancePercent}%). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
       } else if (distToRes <= distToSup) {
         // Near Resistance (Potential Breakout)
-        if (distToRes > 7.5) return null;
+        if (distToRes > 5.0) return null;
         type = 'POTENTIAL_BREAKOUT';
-        level = resistance20d;
+        level = resistance3d;
         levelType = 'RESISTANCE';
         distancePercent = -Number(distToRes.toFixed(2));
         score = this.calcProbabilityScore({
@@ -296,12 +299,12 @@ export class SrScannerService {
           isSqueeze,
           touches: touchesRes,
         });
-        description = `Testing 20D resistance ₹${resistance20d.toFixed(2)} (${distToRes.toFixed(1)}% away). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
+        description = `Testing 3D resistance ₹${resistance3d.toFixed(2)} (${distToRes.toFixed(1)}% away). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
       } else {
         // Near Support (Potential Breakdown)
-        if (distToSup > 7.5) return null;
+        if (distToSup > 5.0) return null;
         type = 'POTENTIAL_BREAKDOWN';
-        level = support20d;
+        level = support3d;
         levelType = 'SUPPORT';
         distancePercent = Number(distToSup.toFixed(2));
         score = this.calcProbabilityScore({
@@ -315,7 +318,7 @@ export class SrScannerService {
           isSqueeze,
           touches: touchesSup,
         });
-        description = `Testing 20D support ₹${support20d.toFixed(2)} (${distToSup.toFixed(1)}% away). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
+        description = `Testing 3D support ₹${support3d.toFixed(2)} (${distToSup.toFixed(1)}% away). RVOL ${rvol}x | RSI ${Math.round(rsi14)}. Probability ${score}%.`;
       }
 
       return {
@@ -331,7 +334,7 @@ export class SrScannerService {
         rvol,
         score,
         detectedAt: new Date(),
-        volume: Math.round(lastVol || volume20dAvg),
+        volume: Math.round(lastVol || volumeAvg),
         description,
       };
     } catch {
@@ -483,7 +486,7 @@ export class SrScannerService {
         score: 92,
         detectedAt: new Date(),
         volume: 48200000,
-        description: 'Broke 20-day resistance at ₹154.20 on 3.2× volume surge. Breakout probability 92%.',
+        description: 'Broke 3-day resistance at ₹154.20 on 3.2× volume surge. Breakout probability 92%.',
       },
       {
         id: 'seed-rel-2',
@@ -499,7 +502,7 @@ export class SrScannerService {
         score: 88,
         detectedAt: new Date(),
         volume: 12450000,
-        description: 'Approaching major 20D resistance at ₹1,335.00 (0.98% away). Breakout probability 88%.',
+        description: 'Approaching 3D resistance at ₹1,335.00 (0.98% away). Breakout probability 88%.',
       },
       {
         id: 'seed-infy-3',
@@ -515,7 +518,7 @@ export class SrScannerService {
         score: 82,
         detectedAt: new Date(),
         volume: 8700000,
-        description: '0.89% above 20D support ₹1,120.00 with elevated volume. Breakdown probability 82%.',
+        description: '0.89% above 3D support ₹1,120.00 with elevated volume. Breakdown probability 82%.',
       },
     ];
   }

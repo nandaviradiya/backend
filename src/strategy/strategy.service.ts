@@ -174,7 +174,7 @@ export class StrategyService implements OnModuleInit {
         rvol,
         volume: candle.volume,
         score: Math.min(95, Math.round(65 + rvol * 10 - distToResPct * 10)),
-        description: `Approaching 20-day resistance at ₹${resistance20d.toFixed(2)} (${distToResPct.toFixed(1)}% away) with ${rvol.toFixed(1)}× volume surge. High chance of breakout.`,
+        description: `Approaching 3-day resistance at ₹${resistance20d.toFixed(2)} (${distToResPct.toFixed(1)}% away) with ${rvol.toFixed(1)}× volume surge. High chance of breakout.`,
       });
     }
 
@@ -191,7 +191,7 @@ export class StrategyService implements OnModuleInit {
         rvol,
         volume: candle.volume,
         score: Math.min(95, Math.round(65 + rvol * 10 - distToSupPct * 10)),
-        description: `Approaching 20-day support at ₹${support20d.toFixed(2)} (${distToSupPct.toFixed(1)}% away) with ${rvol.toFixed(1)}× volume surge. High chance of breakdown.`,
+        description: `Approaching 3-day support at ₹${support20d.toFixed(2)} (${distToSupPct.toFixed(1)}% away) with ${rvol.toFixed(1)}× volume surge. High chance of breakdown.`,
       });
     }
 
