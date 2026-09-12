@@ -26,6 +26,19 @@ export class StrategyController {
     return this.srScannerService.getBreakoutRadarItems(limit ? Number(limit) : 100);
   }
 
+  @Get('radar/liquidity')
+  @ApiOperation({
+    summary: 'Liquidity Trap Scanner — stocks with confirmed stop-hunt sweeps on key S/R levels (SMC/ICT)',
+    description:
+      'Returns stocks where price has swept above resistance (buy-side grab) or below support (sell-side grab) ' +
+      'and closed back inside the range — indicating institutional liquidity hunting. ' +
+      'Only stocks with liquidityGrabScore >= 70 are returned for >70% accuracy.',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  getLiquidityTraps(@Query('limit') limit?: number) {
+    return this.srScannerService.getLiquidityTrapItems(limit ? Number(limit) : 50);
+  }
+
   @Get('signals')
   @ApiOperation({ summary: 'Get scanner signals for today' })
   @ApiQuery({ name: 'type', required: false, enum: SignalType })

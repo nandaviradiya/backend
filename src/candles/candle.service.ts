@@ -92,6 +92,12 @@ export class CandleService implements OnModuleInit {
           isDirty: true,
         };
         this.liveCandles.set(candleKey, newCandle);
+
+        // Publish live forming candle update to WebSocket clients
+        this.redis.publish(
+          `candle:live:${tick.instrumentKey}`,
+          JSON.stringify(this.candleToDto(newCandle)),
+        );
       } else {
         // Update existing candle
         if (tick.ltp > existing.high) existing.high = tick.ltp;
@@ -100,6 +106,12 @@ export class CandleService implements OnModuleInit {
         existing.volume = Math.max(0, tick.totalVolume - existing.startVolume);
         existing.tickCount++;
         existing.isDirty = true;
+
+        // Publish live forming candle update to WebSocket clients
+        this.redis.publish(
+          `candle:live:${tick.instrumentKey}`,
+          JSON.stringify(this.candleToDto(existing)),
+        );
       }
     }
   }
@@ -345,7 +357,7 @@ export class CandleService implements OnModuleInit {
           case '1m':
             yInterval = '1m'; range = '2d'; break;
           case '2m':
-            yInterval = '2m'; range = '5d'; break;
+            yInterval = '1m'; range = '5d'; aggregateSeconds = 120; break;
           case '3m':
             yInterval = '1m'; range = '5d'; aggregateSeconds = 180; break;
           case '4m':
@@ -357,19 +369,19 @@ export class CandleService implements OnModuleInit {
           case '15m':
             yInterval = '15m'; range = '1mo'; break;
           case '30m':
-            yInterval = '30m'; range = '1mo'; break;
+            yInterval = '15m'; range = '1mo'; aggregateSeconds = 1800; break;
           case '75m':
             yInterval = '15m'; range = '1mo'; aggregateSeconds = 4500; break;
           case '125m':
             yInterval = '5m'; range = '1mo'; aggregateSeconds = 7500; break;
           case '1h':
-            yInterval = '60m'; range = '3mo'; break;
+            yInterval = '15m'; range = '3mo'; aggregateSeconds = 3600; break;
           case '2h':
-            yInterval = '60m'; range = '6mo'; aggregateSeconds = 7200; break;
+            yInterval = '15m'; range = '6mo'; aggregateSeconds = 7200; break;
           case '3h':
-            yInterval = '60m'; range = '6mo'; aggregateSeconds = 10800; break;
+            yInterval = '15m'; range = '6mo'; aggregateSeconds = 10800; break;
           case '4h':
-            yInterval = '60m'; range = '6mo'; aggregateSeconds = 14400; break;
+            yInterval = '15m'; range = '6mo'; aggregateSeconds = 14400; break;
           case '1d':
             yInterval = '1d'; range = '1y'; break;
           case '1w':
@@ -422,9 +434,19 @@ export class CandleService implements OnModuleInit {
 
   private aggregateCandles(candles: any[], bucketSeconds: number): any[] {
     if (!candles || candles.length === 0) return [];
+    const IST_OFFSET = 19800; // 5h30m in seconds
+    const MARKET_OPEN_OFFSET = 9 * 3600 + 15 * 60; // 09:15 AM IST = 33300s
+
     const buckets = new Map<number, any>();
     for (const c of candles) {
-      const bucketTime = Math.floor(c.time / bucketSeconds) * bucketSeconds;
+      const istTime = c.time + IST_OFFSET;
+      const dayStartIst = Math.floor(istTime / 86400) * 86400;
+      const secondsIntoDay = istTime - dayStartIst;
+      const sessionSeconds = Math.max(0, secondsIntoDay - MARKET_OPEN_OFFSET);
+      const bucketSessionSeconds = Math.floor(sessionSeconds / bucketSeconds) * bucketSeconds;
+      const bucketIstTime = dayStartIst + MARKET_OPEN_OFFSET + bucketSessionSeconds;
+      const bucketTime = bucketIstTime - IST_OFFSET;
+
       const existing = buckets.get(bucketTime);
       if (!existing) {
         buckets.set(bucketTime, {
@@ -452,9 +474,22 @@ export class CandleService implements OnModuleInit {
   // ── Utilities ──────────────────────────────────────────────────
 
   private getBucketTime(now: Date, interval: Interval): Date {
-    const ms = now.getTime();
-    const bucket = Math.floor(ms / INTERVAL_MS[interval]) * INTERVAL_MS[interval];
-    return new Date(bucket);
+    const IST_OFFSET_MS = 5.5 * 3600 * 1000;
+    const MARKET_OPEN_MS = (9 * 3600 + 15 * 60) * 1000;
+
+    const intervalMs = INTERVAL_MS[interval] || 300_000;
+    if (interval === '1d' || interval === '1w') {
+      const ms = now.getTime();
+      return new Date(Math.floor(ms / intervalMs) * intervalMs);
+    }
+
+    const istMs = now.getTime() + IST_OFFSET_MS;
+    const dayStartIst = Math.floor(istMs / 86400_000) * 86400_000;
+    const msIntoDay = istMs - dayStartIst;
+    const sessionMs = Math.max(0, msIntoDay - MARKET_OPEN_MS);
+    const bucketSessionMs = Math.floor(sessionMs / intervalMs) * intervalMs;
+    const bucketIstMs = dayStartIst + MARKET_OPEN_MS + bucketSessionMs;
+    return new Date(bucketIstMs - IST_OFFSET_MS);
   }
 
   private candleToDto(candle: LiveCandle) {

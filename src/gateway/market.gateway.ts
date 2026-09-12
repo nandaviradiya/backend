@@ -89,12 +89,20 @@ export class MarketGateway
 
   @SubscribeMessage('subscribe:chart')
   handleSubscribeChart(
-    @MessageBody() data: { instrumentKey: string; interval: string },
+    @MessageBody() data: { instrumentKey?: string; interval?: string } | string,
     @ConnectedSocket() client: Socket,
   ) {
-    const roomKey = `chart:${data.instrumentKey}:${data.interval}`;
-    client.join(roomKey);
-    client.emit('chart:subscribed', data);
+    const payload = typeof data === 'string' ? JSON.parse(data) : data || {};
+    const interval = (payload.interval || '5m').toLowerCase();
+    const key = payload.instrumentKey || '';
+    if (!key) return;
+
+    client.join(`chart:${key}:${interval}`);
+    if (key.includes('|')) {
+      const parts = key.split('|');
+      if (parts[1]) client.join(`chart:${parts[1]}:${interval}`);
+    }
+    client.emit('chart:subscribed', { instrumentKey: key, interval });
   }
 
   @SubscribeMessage('subscribe:scanner')
@@ -116,8 +124,8 @@ export class MarketGateway
   }
 
   emitCandleUpdate(data: any) {
-    const roomKey = `chart:${data.instrumentKey}:${data.interval}`;
-    this.server.to(roomKey).emit('market.candle.updated', data);
+    const interval = (data.interval || '5m').toLowerCase();
+    this.server.to(`chart:${data.instrumentKey}:${interval}`).emit('market.candle.updated', data);
   }
 
   emitSignalCreated(signal: any) {
@@ -161,8 +169,14 @@ export class MarketGateway
       const instrumentKey = channel.replace('candle:live:', '');
       try {
         const candle = JSON.parse(message);
-        const roomKey = `chart:${instrumentKey}:${candle.interval}`;
-        this.server.to(roomKey).emit('market.candle.updated', candle);
+        const interval = (candle.interval || '5m').toLowerCase();
+        this.server.to(`chart:${instrumentKey}:${interval}`).emit('market.candle.updated', candle);
+        if (instrumentKey.includes('|')) {
+          const parts = instrumentKey.split('|');
+          if (parts[1]) {
+            this.server.to(`chart:${parts[1]}:${interval}`).emit('market.candle.updated', candle);
+          }
+        }
       } catch (err) {
         this.logger.error('Candle relay error:', err);
       }
