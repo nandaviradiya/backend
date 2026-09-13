@@ -12,6 +12,7 @@ import axios from 'axios';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { PrismaService } from '../prisma/prisma.service';
+import { getStockIndexMeta } from '../strategy/sr-scanner.service';
 
 export interface MarketTick {
   instrumentKey: string;
@@ -43,6 +44,8 @@ export interface LiveQuote {
   bidPrice: number;
   askPrice: number;
   isIndex: boolean;
+  indexName?: string;
+  sector?: string;
   source: string;
   updatedAt: number;
 }
@@ -53,24 +56,33 @@ export interface LiveInstrument {
   name: string;
   yahoo: string;
   isIndex?: boolean;
+  indexName?: string;
+  sector?: string;
 }
 
 export const TICK_EVENT = 'market.tick';
 export const FEED_STATUS_EVENT = 'market.feed.status';
 
 export const DEFAULT_LIVE_INSTRUMENTS: LiveInstrument[] = [
-  { instrumentKey: 'NSE_INDEX|Nifty 50', symbol: 'NIFTY 50', name: 'Nifty 50', yahoo: '^NSEI', isIndex: true },
-  { instrumentKey: 'NSE_INDEX|Nifty Bank', symbol: 'BANK NIFTY', name: 'Nifty Bank', yahoo: '^NSEBANK', isIndex: true },
-  { instrumentKey: 'NSE_INDEX|Nifty IT', symbol: 'NIFTY IT', name: 'Nifty IT', yahoo: '^CNXIT', isIndex: true },
-  { instrumentKey: 'NSE_INDEX|India VIX', symbol: 'INDIA VIX', name: 'India VIX', yahoo: '^INDIAVIX', isIndex: true },
-  { instrumentKey: 'NSE_EQ|INE002A01018', symbol: 'RELIANCE', name: 'Reliance Industries Ltd', yahoo: 'RELIANCE.NS' },
-  { instrumentKey: 'NSE_EQ|INE040A01034', symbol: 'HDFCBANK', name: 'HDFC Bank Ltd', yahoo: 'HDFCBANK.NS' },
-  { instrumentKey: 'NSE_EQ|INE081A01020', symbol: 'TATASTEEL', name: 'Tata Steel Ltd', yahoo: 'TATASTEEL.NS' },
-  { instrumentKey: 'NSE_EQ|INE009A01021', symbol: 'INFY', name: 'Infosys Ltd', yahoo: 'INFY.NS' },
-  { instrumentKey: 'NSE_EQ|INE090A01021', symbol: 'ICICIBANK', name: 'ICICI Bank Ltd', yahoo: 'ICICIBANK.NS' },
-  { instrumentKey: 'NSE_EQ|INE467B01029', symbol: 'TCS', name: 'Tata Consultancy Services', yahoo: 'TCS.NS' },
-  { instrumentKey: 'NSE_EQ|INE062A01020', symbol: 'SBIN', name: 'State Bank of India', yahoo: 'SBIN.NS' },
-  { instrumentKey: 'NSE_EQ|INE758T01015', symbol: 'ZOMATO', name: 'Zomato Ltd (Eternal)', yahoo: 'ETERNAL.NS' },
+  { instrumentKey: 'NSE_INDEX|Nifty 50', symbol: 'NIFTY 50', name: 'Nifty 50', yahoo: '^NSEI', isIndex: true, indexName: 'BENCHMARK', sector: 'Broad Market' },
+  { instrumentKey: 'NSE_INDEX|Nifty Bank', symbol: 'BANK NIFTY', name: 'Nifty Bank', yahoo: '^NSEBANK', isIndex: true, indexName: 'BANKING', sector: 'Banking' },
+  { instrumentKey: 'NSE_INDEX|Nifty Fin Service', symbol: 'FIN NIFTY', name: 'Nifty Financial Services', yahoo: 'NIFTY_FIN_SERVICE.NS', isIndex: true, indexName: 'FINANCIALS', sector: 'Financial Services' },
+  { instrumentKey: 'NSE_INDEX|Nifty IT', symbol: 'NIFTY IT', name: 'Nifty IT', yahoo: '^CNXIT', isIndex: true, indexName: 'IT', sector: 'Technology' },
+  { instrumentKey: 'NSE_INDEX|Nifty Auto', symbol: 'NIFTY AUTO', name: 'Nifty Auto', yahoo: '^CNXAUTO', isIndex: true, indexName: 'AUTO', sector: 'Automobiles' },
+  { instrumentKey: 'NSE_INDEX|Nifty Pharma', symbol: 'NIFTY PHARMA', name: 'Nifty Pharma', yahoo: '^CNXPHARMA', isIndex: true, indexName: 'PHARMA', sector: 'Healthcare' },
+  { instrumentKey: 'NSE_INDEX|Nifty Metal', symbol: 'NIFTY METAL', name: 'Nifty Metal', yahoo: '^CNXMETAL', isIndex: true, indexName: 'METAL', sector: 'Metals & Mining' },
+  { instrumentKey: 'NSE_INDEX|Nifty FMCG', symbol: 'NIFTY FMCG', name: 'Nifty FMCG', yahoo: '^CNXFMCG', isIndex: true, indexName: 'FMCG', sector: 'Consumer Goods' },
+  { instrumentKey: 'NSE_INDEX|Nifty Energy', symbol: 'NIFTY ENERGY', name: 'Nifty Energy', yahoo: '^CNXENERGY', isIndex: true, indexName: 'ENERGY', sector: 'Oil & Power' },
+  { instrumentKey: 'NSE_INDEX|Sensex', symbol: 'SENSEX', name: 'BSE Sensex', yahoo: '^BSESN', isIndex: true, indexName: 'BSE', sector: 'Benchmark' },
+  { instrumentKey: 'NSE_INDEX|India VIX', symbol: 'INDIA VIX', name: 'India Volatility Index', yahoo: '^INDIAVIX', isIndex: true, indexName: 'VOLATILITY', sector: 'Index' },
+  { instrumentKey: 'NSE_EQ|INE002A01018', symbol: 'RELIANCE', name: 'Reliance Industries Ltd', yahoo: 'RELIANCE.NS', indexName: 'NIFTY 50', sector: 'Oil & Telecom' },
+  { instrumentKey: 'NSE_EQ|INE040A01034', symbol: 'HDFCBANK', name: 'HDFC Bank Ltd', yahoo: 'HDFCBANK.NS', indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  { instrumentKey: 'NSE_EQ|INE081A01020', symbol: 'TATASTEEL', name: 'Tata Steel Ltd', yahoo: 'TATASTEEL.NS', indexName: 'NIFTY METAL', sector: 'Iron & Steel' },
+  { instrumentKey: 'NSE_EQ|INE009A01021', symbol: 'INFY', name: 'Infosys Ltd', yahoo: 'INFY.NS', indexName: 'NIFTY IT', sector: 'IT Services' },
+  { instrumentKey: 'NSE_EQ|INE090A01021', symbol: 'ICICIBANK', name: 'ICICI Bank Ltd', yahoo: 'ICICIBANK.NS', indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  { instrumentKey: 'NSE_EQ|INE467B01029', symbol: 'TCS', name: 'Tata Consultancy Services', yahoo: 'TCS.NS', indexName: 'NIFTY IT', sector: 'IT Services' },
+  { instrumentKey: 'NSE_EQ|INE062A01020', symbol: 'SBIN', name: 'State Bank of India', yahoo: 'SBIN.NS', indexName: 'NIFTY BANK', sector: 'PSU Bank' },
+  { instrumentKey: 'NSE_EQ|INE758T01015', symbol: 'ZOMATO', name: 'Zomato Ltd (Eternal)', yahoo: 'ETERNAL.NS', indexName: 'NIFTY 50', sector: 'Consumer Tech' },
 ];
 
 @Injectable()
@@ -295,17 +307,23 @@ export class MarketFeedService implements OnModuleInit, OnModuleDestroy {
     const change = tick.ltp - prev;
     const changePct = prev ? (change / prev) * 100 : 0;
     const meta = this.metaByKey.get(tick.instrumentKey);
+    const sym = tick.symbol || meta?.symbol || tick.instrumentKey;
+    const isIdx = tick.isIndex ?? meta?.isIndex ?? false;
+    const indexMeta = isIdx ? { indexName: 'INDEX', sector: 'Index' } : getStockIndexMeta(sym);
+
     return {
       instrumentKey: tick.instrumentKey,
-      symbol: tick.symbol || meta?.symbol || tick.instrumentKey,
-      name: tick.name || meta?.name || tick.symbol || tick.instrumentKey,
+      symbol: sym,
+      name: tick.name || meta?.name || sym,
       ltp: tick.ltp,
       change: Number(change.toFixed(2)),
       changePct: Number(changePct.toFixed(2)),
       volume: tick.totalVolume,
       bidPrice: tick.bidPrice,
       askPrice: tick.askPrice,
-      isIndex: tick.isIndex ?? meta?.isIndex ?? false,
+      isIndex: isIdx,
+      indexName: meta?.indexName || indexMeta.indexName,
+      sector: meta?.sector || indexMeta.sector,
       source: tick.source || this.feedMode,
       updatedAt: Date.now(),
     };

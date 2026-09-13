@@ -40,11 +40,176 @@ export interface BreakoutRadarItem {
   detectedAt: Date;
   volume: number;
   description: string;
+  // Index & Sector metadata
+  indexName?: string;
+  sector?: string;
   // Liquidity grab fields
   isLiquidityTrap?: boolean;
   liquidityGrabType?: 'BOTH_SIDES' | 'BUY_SIDE' | 'SELL_SIDE' | 'NONE';
   liquidityGrabScore?: number;
   liquidityDescription?: string;
+}
+
+export const STOCK_INDEX_MAP: Record<string, { indexName: string; sector: string }> = {
+  // NIFTY BANK / Financials
+  HDFCBANK: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  ICICIBANK: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  KOTAKBANK: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  AXISBANK: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  SBIN: { indexName: 'NIFTY BANK', sector: 'PSU Bank' },
+  INDUSINDBK: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  BANKBARODA: { indexName: 'NIFTY BANK', sector: 'PSU Bank' },
+  PNB: { indexName: 'NIFTY BANK', sector: 'PSU Bank' },
+  CANBK: { indexName: 'NIFTY BANK', sector: 'PSU Bank' },
+  FEDERALBNK: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  IDFCFIRSTB: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  BANDHANBNK: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  AUBANK: { indexName: 'NIFTY BANK', sector: 'Private Bank' },
+  BAJFINANCE: { indexName: 'NIFTY FIN SERVICE', sector: 'NBFC' },
+  BAJAJFINSV: { indexName: 'NIFTY FIN SERVICE', sector: 'Financial Services' },
+  SBILIFE: { indexName: 'NIFTY FIN SERVICE', sector: 'Life Insurance' },
+  HDFCLIFE: { indexName: 'NIFTY FIN SERVICE', sector: 'Life Insurance' },
+  ICICIPRULI: { indexName: 'NIFTY FIN SERVICE', sector: 'Life Insurance' },
+  ICICIGI: { indexName: 'NIFTY FIN SERVICE', sector: 'General Insurance' },
+  HDFCAMC: { indexName: 'NIFTY FIN SERVICE', sector: 'Asset Management' },
+  PFC: { indexName: 'NIFTY FIN SERVICE', sector: 'NBFC / Power Finance' },
+  REC: { indexName: 'NIFTY FIN SERVICE', sector: 'NBFC / Power Finance' },
+  JIOFIN: { indexName: 'NIFTY FIN SERVICE', sector: 'Financial Services' },
+  MUTHOOTFIN: { indexName: 'NIFTY FIN SERVICE', sector: 'Gold Finance' },
+  CHOLAFIN: { indexName: 'NIFTY FIN SERVICE', sector: 'Auto Finance' },
+  SHRIRAMFIN: { indexName: 'NIFTY FIN SERVICE', sector: 'NBFC' },
+
+  // NIFTY IT
+  TCS: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  INFY: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  HCLTECH: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  WIPRO: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  TECHM: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  LTIM: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  PERSISTENT: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  COFORGE: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  MPHASIS: { indexName: 'NIFTY IT', sector: 'IT Services' },
+  LTTS: { indexName: 'NIFTY IT', sector: 'Engineering R&D' },
+  TATAELXSI: { indexName: 'NIFTY IT', sector: 'Design & Technology' },
+  OFSS: { indexName: 'NIFTY IT', sector: 'Financial Software' },
+
+  // NIFTY AUTO
+  TATAMOTORS: { indexName: 'NIFTY AUTO', sector: 'Automobiles' },
+  MARUTI: { indexName: 'NIFTY AUTO', sector: 'Automobiles' },
+  'M&M': { indexName: 'NIFTY AUTO', sector: 'Automobiles' },
+  HEROMOTOCO: { indexName: 'NIFTY AUTO', sector: 'Two Wheelers' },
+  'BAJAJ-AUTO': { indexName: 'NIFTY AUTO', sector: 'Two Wheelers' },
+  EICHERMOT: { indexName: 'NIFTY AUTO', sector: 'Automobiles' },
+  TVSMOTOR: { indexName: 'NIFTY AUTO', sector: 'Two Wheelers' },
+  ASHOKLEY: { indexName: 'NIFTY AUTO', sector: 'Commercial Vehicles' },
+  MOTHERSON: { indexName: 'NIFTY AUTO', sector: 'Auto Ancillaries' },
+  BHARATFORG: { indexName: 'NIFTY AUTO', sector: 'Forgings / Defence' },
+  BALKRISIND: { indexName: 'NIFTY AUTO', sector: 'Tyres' },
+  MRF: { indexName: 'NIFTY AUTO', sector: 'Tyres' },
+  APOLLOTYRE: { indexName: 'NIFTY AUTO', sector: 'Tyres' },
+  BOSCHLTD: { indexName: 'NIFTY AUTO', sector: 'Auto Parts' },
+
+  // NIFTY PHARMA & HEALTHCARE
+  SUNPHARMA: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  CIPLA: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  DRREDDY: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  DIVISLAB: { indexName: 'NIFTY PHARMA', sector: 'Active Ingredients' },
+  APOLLOHOSP: { indexName: 'NIFTY PHARMA', sector: 'Healthcare & Hospitals' },
+  LUPIN: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  AUROPHARMA: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  BIOCON: { indexName: 'NIFTY PHARMA', sector: 'Biotechnology' },
+  TORNTPHARM: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  ALKEM: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  MANKIND: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  ZYDUSLIFE: { indexName: 'NIFTY PHARMA', sector: 'Pharmaceuticals' },
+  MAXHEALTH: { indexName: 'NIFTY PHARMA', sector: 'Hospitals' },
+  FORTIS: { indexName: 'NIFTY PHARMA', sector: 'Hospitals' },
+
+  // NIFTY METAL
+  TATASTEEL: { indexName: 'NIFTY METAL', sector: 'Iron & Steel' },
+  JSWSTEEL: { indexName: 'NIFTY METAL', sector: 'Iron & Steel' },
+  HINDALCO: { indexName: 'NIFTY METAL', sector: 'Aluminium & Copper' },
+  VEDL: { indexName: 'NIFTY METAL', sector: 'Diversified Metals' },
+  JINDALSTEL: { indexName: 'NIFTY METAL', sector: 'Iron & Steel' },
+  SAIL: { indexName: 'NIFTY METAL', sector: 'Iron & Steel' },
+  NMDC: { indexName: 'NIFTY METAL', sector: 'Mining' },
+  COALINDIA: { indexName: 'NIFTY METAL', sector: 'Coal Mining' },
+  NATIONALUM: { indexName: 'NIFTY METAL', sector: 'Aluminium' },
+  HINDCOPPER: { indexName: 'NIFTY METAL', sector: 'Copper' },
+
+  // NIFTY FMCG
+  ITC: { indexName: 'NIFTY FMCG', sector: 'Cigarettes & FMCG' },
+  HINDUNILVR: { indexName: 'NIFTY FMCG', sector: 'Personal Care & Foods' },
+  NESTLEIND: { indexName: 'NIFTY FMCG', sector: 'Packaged Foods' },
+  BRITANNIA: { indexName: 'NIFTY FMCG', sector: 'Bakery & Dairy' },
+  TATACONSUM: { indexName: 'NIFTY FMCG', sector: 'Tea & Food Products' },
+  DABUR: { indexName: 'NIFTY FMCG', sector: 'Ayurvedic & Healthcare' },
+  MARICO: { indexName: 'NIFTY FMCG', sector: 'Edible Oils & Hair Care' },
+  COLPAL: { indexName: 'NIFTY FMCG', sector: 'Oral Care' },
+  GODREJCP: { indexName: 'NIFTY FMCG', sector: 'Household Products' },
+  VBL: { indexName: 'NIFTY FMCG', sector: 'Beverages' },
+
+  // NIFTY ENERGY / OIL & GAS
+  RELIANCE: { indexName: 'NIFTY 50', sector: 'Oil & Telecom' },
+  ONGC: { indexName: 'NIFTY ENERGY', sector: 'Oil Exploration' },
+  NTPC: { indexName: 'NIFTY ENERGY', sector: 'Power Generation' },
+  POWERGRID: { indexName: 'NIFTY ENERGY', sector: 'Power Transmission' },
+  BPCL: { indexName: 'NIFTY ENERGY', sector: 'Oil Refining' },
+  IOC: { indexName: 'NIFTY ENERGY', sector: 'Oil Refining' },
+  GAIL: { indexName: 'NIFTY ENERGY', sector: 'Natural Gas' },
+  TATAPOWER: { indexName: 'NIFTY ENERGY', sector: 'Renewable Power' },
+  ADANIGREEN: { indexName: 'NIFTY ENERGY', sector: 'Renewable Energy' },
+  ADANIPOWER: { indexName: 'NIFTY ENERGY', sector: 'Thermal Power' },
+  PETRONET: { indexName: 'NIFTY ENERGY', sector: 'LNG Import' },
+  OIL: { indexName: 'NIFTY ENERGY', sector: 'Oil & Gas' },
+  JSWENERGY: { indexName: 'NIFTY ENERGY', sector: 'Power' },
+  SUZLON: { indexName: 'NIFTY ENERGY', sector: 'Wind Energy' },
+
+  // NIFTY INFRA & CAPITAL GOODS
+  LT: { indexName: 'NIFTY 50', sector: 'Engineering & Construction' },
+  ULTRACEMCO: { indexName: 'NIFTY 50', sector: 'Cement' },
+  GRASIM: { indexName: 'NIFTY 50', sector: 'Viscose & Chemicals' },
+  AMBUJACEM: { indexName: 'NIFTY INFRA', sector: 'Cement' },
+  ACC: { indexName: 'NIFTY INFRA', sector: 'Cement' },
+  BEL: { indexName: 'NIFTY INFRA', sector: 'Aerospace & Defence' },
+  HAL: { indexName: 'NIFTY INFRA', sector: 'Aerospace & Defence' },
+  BHEL: { indexName: 'NIFTY INFRA', sector: 'Heavy Electricals' },
+  SIEMENS: { indexName: 'NIFTY INFRA', sector: 'Capital Goods' },
+  ABB: { indexName: 'NIFTY INFRA', sector: 'Power Equipment' },
+  RVNL: { indexName: 'NIFTY INFRA', sector: 'Railways Infrastructure' },
+  IRCTC: { indexName: 'NIFTY INFRA', sector: 'Railway Ticketing' },
+  ADANIENT: { indexName: 'NIFTY 50', sector: 'Diversified Conglomerate' },
+  ADANIPORTS: { indexName: 'NIFTY 50', sector: 'Ports & Logistics' },
+
+  // NIFTY REALTY
+  DLF: { indexName: 'NIFTY REALTY', sector: 'Real Estate' },
+  GODREJPROP: { indexName: 'NIFTY REALTY', sector: 'Real Estate' },
+  OBEROIRLTY: { indexName: 'NIFTY REALTY', sector: 'Real Estate' },
+  LODHA: { indexName: 'NIFTY REALTY', sector: 'Real Estate' },
+
+  // CONSUMPTION & CONSUMER DURABLES
+  TITAN: { indexName: 'NIFTY 50', sector: 'Jewellery & Watches' },
+  TRENT: { indexName: 'NIFTY 50', sector: 'Fashion & Retail' },
+  ZOMATO: { indexName: 'NIFTY 50', sector: 'Food Delivery & Tech' },
+  ASIANPAINT: { indexName: 'NIFTY 50', sector: 'Paints & Décor' },
+  POLYCAB: { indexName: 'NIFTY CONSUMPTION', sector: 'Wires & Cables' },
+  HAVELLS: { indexName: 'NIFTY CONSUMPTION', sector: 'Electrical Consumer Goods' },
+  VOLTAS: { indexName: 'NIFTY CONSUMPTION', sector: 'Air Conditioners' },
+  DIXON: { indexName: 'NIFTY CONSUMPTION', sector: 'Electronics Manufacturing' },
+  KALYANKJIL: { indexName: 'NIFTY CONSUMPTION', sector: 'Jewellery' },
+  INDHOTEL: { indexName: 'NIFTY CONSUMPTION', sector: 'Hotels & Hospitality' },
+
+  // TELECOM
+  BHARTIARTL: { indexName: 'NIFTY 50', sector: 'Telecom Services' },
+  INDUSTOWER: { indexName: 'NIFTY INFRA', sector: 'Telecom Towers' },
+};
+
+export function getStockIndexMeta(symbol: string): { indexName: string; sector: string } {
+  const cleanSym = symbol.toUpperCase().replace('.NS', '').replace('.BO', '');
+  if (STOCK_INDEX_MAP[cleanSym]) {
+    return STOCK_INDEX_MAP[cleanSym];
+  }
+  return { indexName: 'NIFTY 500', sector: 'Equities' };
 }
 
 const PRIORITY_SYMBOLS = [
@@ -354,6 +519,8 @@ export class SrScannerService {
         volumeAvg,
       });
 
+      const indexMeta = getStockIndexMeta(symbol);
+
       return {
         id: `radar-${symbol}-${Math.round(currentPrice)}`,
         symbol,
@@ -369,6 +536,8 @@ export class SrScannerService {
         detectedAt: new Date(),
         volume: Math.round(lastVol || volumeAvg),
         description,
+        indexName: indexMeta.indexName,
+        sector: indexMeta.sector,
         isLiquidityTrap: liquidityResult.isLiquidityTrap,
         liquidityGrabType: liquidityResult.grabType,
         liquidityGrabScore: liquidityResult.score,
@@ -617,6 +786,19 @@ export class SrScannerService {
   }
 
 
+  async getRadarItemsByIndex(indexName?: string, limit = 100): Promise<BreakoutRadarItem[]> {
+    const items = await this.getBreakoutRadarItems(limit);
+    if (!indexName || indexName.toUpperCase() === 'ALL' || indexName.toUpperCase() === 'ALL RADAR') {
+      return items;
+    }
+    const filterUpper = indexName.toUpperCase();
+    return items.filter(
+      item =>
+        (item.indexName && item.indexName.toUpperCase().includes(filterUpper)) ||
+        (item.sector && item.sector.toUpperCase().includes(filterUpper))
+    );
+  }
+
   private getFallbackSeedRadar(): BreakoutRadarItem[] {
     return [
       {
@@ -634,6 +816,8 @@ export class SrScannerService {
         detectedAt: new Date(),
         volume: 48200000,
         description: 'Broke 3-day resistance at ₹154.20 on 3.2× volume surge. Breakout probability 92%.',
+        indexName: 'NIFTY METAL',
+        sector: 'Iron & Steel',
       },
       {
         id: 'seed-rel-2',
@@ -650,6 +834,8 @@ export class SrScannerService {
         detectedAt: new Date(),
         volume: 12450000,
         description: 'Approaching 3D resistance at ₹1,335.00 (0.98% away). Breakout probability 88%.',
+        indexName: 'NIFTY 50',
+        sector: 'Oil & Telecom',
       },
       {
         id: 'seed-infy-3',
@@ -666,6 +852,8 @@ export class SrScannerService {
         detectedAt: new Date(),
         volume: 8700000,
         description: '0.89% above 3D support ₹1,120.00 with elevated volume. Breakdown probability 82%.',
+        indexName: 'NIFTY IT',
+        sector: 'IT Services',
       },
     ];
   }

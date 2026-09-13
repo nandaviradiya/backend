@@ -39,6 +39,17 @@ export class StrategyController {
     return this.srScannerService.getLiquidityTrapItems(limit ? Number(limit) : 50);
   }
 
+  @Get('radar/by-index')
+  @ApiOperation({ summary: 'Filter Breakout Radar stocks by index or sector (e.g. NIFTY 50, NIFTY BANK, NIFTY IT)' })
+  @ApiQuery({ name: 'index', required: false, type: String })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  getRadarByIndex(
+    @Query('index') index?: string,
+    @Query('limit') limit?: number
+  ) {
+    return this.srScannerService.getRadarItemsByIndex(index, limit ? Number(limit) : 100);
+  }
+
   @Get('signals')
   @ApiOperation({ summary: 'Get scanner signals for today' })
   @ApiQuery({ name: 'type', required: false, enum: SignalType })
